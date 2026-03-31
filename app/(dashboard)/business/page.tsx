@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Bar, BarChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Plus, Trash2 } from 'lucide-react'
 import { TopBar } from '@/components/layout/top-bar'
@@ -9,6 +9,7 @@ import { formatCurrency } from '@/lib/utils/formatters'
 
 export default function BusinessPage() {
   const supabase = useMemo(() => createClient(), [])
+  const [userId, setUserId] = useState('')
   const [packages, setPackages] = useState<any[]>([])
   const [metrics, setMetrics] = useState<any[]>([])
   const [targetMrr, setTargetMrr] = useState('50000')
@@ -24,9 +25,27 @@ export default function BusinessPage() {
   const churnMultiplier = 1 + Number(churn || 0) / 100
   const clientsNeeded = avgPackage ? Math.ceil(Number(targetMrr || 0) / avgPackage * churnMultiplier) : 0
 
+  useEffect(() => {
+    async function load() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) return
+      setUserId(user.id)
+      const [{ data: packageRows }, { data: metricRows }] = await Promise.all([
+        supabase.from('service_packages').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
+        supabase.from('business_metrics').select('*').eq('user_id', user.id).order('month', { ascending: false }).limit(12),
+      ])
+      setPackages(packageRows || [])
+      setMetrics(metricRows || [])
+    }
+    void load()
+  }, [supabase])
+
   async function addPackage(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const { data } = await supabase.from('service_packages').insert({ name: pkgForm.name, mrr: Number(pkgForm.mrr || 0), setup_fee: Number(pkgForm.setup_fee || 0) }).select().single()
+    if (!userId) return
+    const { data } = await supabase.from('service_packages').insert({ user_id: userId, name: pkgForm.name, mrr: Number(pkgForm.mrr || 0), setup_fee: Number(pkgForm.setup_fee || 0) }).select().single()
     if (data) setPackages((current) => [data, ...current])
     setPkgForm({ name: '', mrr: '', setup_fee: '' })
   }
@@ -38,7 +57,8 @@ export default function BusinessPage() {
 
   async function addMetric(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const { data } = await supabase.from('business_metrics').insert({ month: metricForm.month, mrr: Number(metricForm.mrr || 0), client_count: Number(metricForm.client_count || 0), churn_rate: Number(metricForm.churn_rate || 0) }).select().single()
+    if (!userId) return
+    const { data } = await supabase.from('business_metrics').insert({ user_id: userId, month: metricForm.month, mrr: Number(metricForm.mrr || 0), client_count: Number(metricForm.client_count || 0), churn_rate: Number(metricForm.churn_rate || 0) }).select().single()
     if (data) setMetrics((current) => [data, ...current].sort((a, b) => (a.month < b.month ? 1 : -1)).slice(0, 12))
     setMetricForm({ month: new Date().toISOString().slice(0, 10), mrr: '', client_count: '', churn_rate: '' })
   }
