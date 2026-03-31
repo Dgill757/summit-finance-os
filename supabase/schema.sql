@@ -4,6 +4,8 @@ CREATE TABLE IF NOT EXISTS profiles (
   full_name TEXT,
   email TEXT NOT NULL,
   avatar_url TEXT,
+  notification_prefs JSONB DEFAULT '{}',
+  expense_split_percent INTEGER DEFAULT 60,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -74,6 +76,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   is_recurring BOOLEAN DEFAULT FALSE,
   is_flagged BOOLEAN DEFAULT FALSE,
   is_reimbursable BOOLEAN DEFAULT FALSE,
+  is_business BOOLEAN DEFAULT FALSE,
   logo_url TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -158,10 +161,31 @@ CREATE TABLE IF NOT EXISTS manual_assets (
   type TEXT,
   value NUMERIC(14,2) NOT NULL,
   description TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE manual_assets ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users own manual assets" ON manual_assets USING (auth.uid() = user_id);
+
+CREATE TABLE IF NOT EXISTS category_rules (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  merchant_pattern TEXT NOT NULL,
+  category TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE category_rules ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users own category rules" ON category_rules USING (auth.uid() = user_id);
+
+CREATE TABLE IF NOT EXISTS family_invites (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  email TEXT NOT NULL,
+  status TEXT DEFAULT 'pending',
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE family_invites ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users own family invites" ON family_invites USING (auth.uid() = user_id);
 
 CREATE TABLE IF NOT EXISTS net_worth_snapshots (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,

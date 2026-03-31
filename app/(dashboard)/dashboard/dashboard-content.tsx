@@ -1,8 +1,8 @@
 'use client'
 
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
-import { Landmark, PiggyBank, TrendingDown, TrendingUp, Wallet } from 'lucide-react'
+import { Bot, Landmark, PiggyBank, TrendingDown, TrendingUp } from 'lucide-react'
 import { toast } from 'sonner'
 import { TopBar } from '@/components/layout/top-bar'
 import { StatCard } from '@/components/dashboard/stat-card'
@@ -11,7 +11,7 @@ import { SpendingDonut } from '@/components/charts/spending-donut'
 import { RecentTransactions } from '@/components/dashboard/recent-transactions'
 import { GoalsStrip } from '@/components/dashboard/goals-strip'
 import { ConnectBankPrompt } from '@/components/dashboard/connect-bank-prompt'
-import { formatCurrency } from '@/lib/utils/formatters'
+import { formatCurrency, formatDate } from '@/lib/utils/formatters'
 import { GoalRecord, TransactionRecord } from '@/types'
 
 export default function DashboardContent({
@@ -27,6 +27,8 @@ export default function DashboardContent({
   recentTransactions,
   goals,
   netWorthDelta,
+  topCategory,
+  upcomingBills,
 }: {
   accountsCount: number
   netWorth: number
@@ -40,19 +42,53 @@ export default function DashboardContent({
   recentTransactions: TransactionRecord[]
   goals: GoalRecord[]
   netWorthDelta: number
+  topCategory: { category: string; amount: number }
+  upcomingBills: Array<{ merchant: string; monthly_amount: number; next_date: string; days_until: number }>
 }) {
   const [syncing, setSyncing] = useState(false)
+  const [aiInsight, setAiInsight] = useState('')
   const router = useRouter()
 
-  async function handleSync() {
+  const insightKey = useMemo(() => `dashboard-insight-${new Date().toISOString().slice(0, 10)}`, [])
+
+  useEffect(() => {
+    const cached = localStorage.getItem(insightKey)
+    if (cached) {
+      setAiInsight(cached)
+      return
+    }
+    async function loadInsight() {
+      const res = await fetch('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [
+            {
+              role: 'user',
+              content: `In one sentence, give Dan Gill the single most important financial insight from this data: Net Worth $${netWorth}, Month Expenses $${monthExpenses}, Savings Rate ${savingsRate}%, ${topCategory.category} is the top spending category at $${topCategory.amount}. Be specific and actionable.`,
+            },
+          ],
+          financialContext: { net_worth: netWorth, month_expenses: monthExpenses, savings_rate: savingsRate, top_category: topCategory.category },
+        }),
+      })
+      const data = await res.json()
+      const message = data.message || 'Your spending concentration is the clearest lever to improve this month.'
+      setAiInsight(message)
+      localStorage.setItem(insightKey, message)
+    }
+    void loadInsight()
+  }, [insightKey, monthExpenses, netWorth, savingsRate, topCategory.amount, topCategory.category])
+
+  const handleSync = async () => {
+    setSyncing(true)
     try {
-      setSyncing(true)
-      const [accountsRes, txRes] = await Promise.all([fetch('/api/plaid/accounts', { method: 'POST' }), fetch('/api/plaid/transactions', { method: 'POST' })])
-      if (!accountsRes.ok || !txRes.ok) throw new Error('Sync failed')
-      toast.success('Accounts and transactions synced')
+      await fetch('/api/plaid/accounts', { method: 'POST' })
+      const res = await fetch('/api/plaid/transactions', { method: 'POST' })
+      const data = await res.json()
+      toast.success(`Synced ${data.synced || 0} transactions`)
       router.refresh()
-    } catch (error: any) {
-      toast.error(error.message || 'Unable to sync financial data')
+    } catch {
+      toast.error('Sync failed — check your connection')
     } finally {
       setSyncing(false)
     }
@@ -112,6 +148,15 @@ export default function DashboardContent({
           </section>
         </div>
 
+        <section className="rounded-2xl border border-border bg-surface p-5 shadow-card">
+          <div className="mb-3 flex items-center gap-2 text-xs uppercase tracking-[0.24em] text-muted">
+            <Bot size={14} className="text-teal" />
+            AI Insight
+          </div>
+          <div className="h-1 w-full rounded-full bg-gradient-to-r from-transparent via-teal/30 to-transparent" />
+          <p className="mt-4 text-sm leading-7 text-primary">{aiInsight || 'Generating today’s most important insight...'}</p>
+        </section>
+
         <section className="grid gap-4 rounded-2xl border border-border bg-surface p-5 shadow-card md:grid-cols-3">
           <div className="rounded-2xl border border-border bg-panel/60 p-4">
             <div className="text-xs uppercase tracking-[0.24em] text-muted">Income</div>
@@ -124,6 +169,23 @@ export default function DashboardContent({
           <div className="rounded-2xl border border-border bg-panel/60 p-4">
             <div className="text-xs uppercase tracking-[0.24em] text-muted">Net Cash Flow</div>
             <div className={`mt-3 font-num text-2xl font-bold ${cashFlow >= 0 ? 'text-teal' : 'text-down'}`}>{formatCurrency(cashFlow)}</div>
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-border bg-surface p-5 shadow-card">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <div className="text-xs uppercase tracking-[0.24em] text-muted">Upcoming Bills</div>
+              <h2 className="mt-2 font-display text-xl font-semibold text-primary">Expected this week: {formatCurrency(upcomingBills.reduce((sum, bill) => sum + bill.monthly_amount, 0))} across {upcomingBills.length} bills</h2>
+            </div>
+          </div>
+          <div className="space-y-3">
+            {upcomingBills.length ? upcomingBills.map((bill) => (
+              <div key={`${bill.merchant}-${bill.next_date}`} className="flex items-center justify-between rounded-xl bg-panel/50 px-4 py-3">
+                <div><div className="text-primary">{bill.merchant}</div><div className="text-xs text-secondary">Expected {formatDate(bill.next_date)}</div></div>
+                <div className="text-right"><div className="font-num text-primary">{formatCurrency(bill.monthly_amount)}</div><div className="text-xs text-secondary">{bill.days_until} days</div></div>
+              </div>
+            )) : <div className="text-sm text-secondary">No recurring charges expected in the next 7 days.</div>}
           </div>
         </section>
       </div>

@@ -3,12 +3,13 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
-import { BarChart3, BookOpen, Bot, Building2, ChevronRight, CreditCard, LayoutDashboard, LogOut, PieChart, Plus, Settings, Target, TrendingUp, Users, Zap } from 'lucide-react'
+import { BarChart3, BookOpen, Bot, Building2, ChevronRight, CreditCard, FileText, LayoutDashboard, LogOut, PieChart, Plus, Rocket, Settings, Target, TrendingUp, Users, Zap } from 'lucide-react'
 import * as Tooltip from '@radix-ui/react-tooltip'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils/cn'
+import { QuickAddModal } from '@/components/layout/quick-add-modal'
 
-const sections = [
+const NAV_SECTIONS = [
   {
     label: 'Overview',
     items: [
@@ -22,7 +23,7 @@ const sections = [
     items: [
       { href: '/transactions', label: 'Transactions', icon: CreditCard },
       { href: '/budgets', label: 'Budgets', icon: PieChart },
-      { href: '/transactions?category=Subscriptions', label: 'Subscriptions', icon: Zap },
+      { href: '/subscriptions', label: 'Subscriptions', icon: Zap },
     ],
   },
   {
@@ -30,15 +31,15 @@ const sections = [
     items: [
       { href: '/goals', label: 'Goals', icon: Target },
       { href: '/investments', label: 'Investments', icon: BarChart3 },
-      { href: '/reports', label: 'Reports', icon: BarChart3 },
-      { href: '/net-worth', label: 'Future Planning', icon: TrendingUp },
+      { href: '/reports', label: 'Reports', icon: FileText },
+      { href: '/planning', label: 'Future Planning', icon: Rocket },
     ],
   },
   {
     label: 'Command',
     items: [
       { href: '/business', label: 'Business OS', icon: Building2 },
-      { href: '/goals?type=family', label: 'Family', icon: Users },
+      { href: '/family', label: 'Family', icon: Users },
       { href: '/advisor', label: 'AI Advisor', icon: Bot },
     ],
   },
@@ -48,6 +49,7 @@ export function Sidebar({ userEmail, userName }: { userEmail: string; userName: 
   const pathname = usePathname()
   const router = useRouter()
   const [collapsed, setCollapsed] = useState(false)
+  const [quickAddOpen, setQuickAddOpen] = useState(false)
   const supabase = useMemo(() => createClient(), [])
 
   async function handleLogout() {
@@ -83,13 +85,13 @@ export function Sidebar({ userEmail, userName }: { userEmail: string; userName: 
           </button>
         </div>
 
-        <button className={cn('mb-6 flex items-center gap-2 rounded-2xl border border-teal/15 bg-teal-bg px-3 py-3 text-sm text-teal transition hover:border-teal/30 hover:shadow-glow-teal', collapsed && 'justify-center px-0')}>
+        <button onClick={() => setQuickAddOpen(true)} className={cn('mb-6 flex items-center gap-2 rounded-2xl border border-teal/15 bg-teal-bg px-3 py-3 text-sm text-teal transition hover:border-teal/30 hover:shadow-glow-teal', collapsed && 'justify-center px-0')}>
           <Plus size={16} />
           {!collapsed && <span>Quick Add Transaction</span>}
         </button>
 
         <div className="flex-1 space-y-5 overflow-y-auto pr-1">
-          {sections.map((section) => (
+          {NAV_SECTIONS.map((section) => (
             <div key={section.label}>
               {!collapsed && <div className="mb-2 px-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-muted">{section.label}</div>}
               <div className="space-y-1">
@@ -149,6 +151,7 @@ export function Sidebar({ userEmail, userName }: { userEmail: string; userName: 
           </div>
         </div>
       </aside>
+      <QuickAddModal open={quickAddOpen} onOpenChange={setQuickAddOpen} />
     </Tooltip.Provider>
   )
 }

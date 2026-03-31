@@ -1,5 +1,6 @@
 import { endOfMonth, format, startOfMonth, subMonths } from 'date-fns'
 import { createClient } from '@/lib/supabase/server'
+import { detectSubscriptions, estimateUpcomingBills, getTopCategory } from '@/lib/utils/finance'
 import DashboardContent from './dashboard-content'
 
 export default async function DashboardPage() {
@@ -63,6 +64,9 @@ export default async function DashboardPage() {
 
   const lastSnapshot = snapshotRes.data
   const netWorthDelta = lastSnapshot?.net_worth ? ((netWorth - Number(lastSnapshot.net_worth)) / Number(lastSnapshot.net_worth)) * 100 : 0
+  const subscriptions = detectSubscriptions(monthTransactions as any)
+  const upcomingBills = estimateUpcomingBills(subscriptions)
+  const topCategory = getTopCategory(monthTransactions as any)
 
   return (
     <DashboardContent
@@ -78,6 +82,8 @@ export default async function DashboardPage() {
       recentTransactions={recentTransactions as any}
       goals={goals as any}
       netWorthDelta={Number.isFinite(netWorthDelta) ? netWorthDelta : 0}
+      topCategory={topCategory}
+      upcomingBills={upcomingBills}
     />
   )
 }

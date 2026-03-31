@@ -1,52 +1,50 @@
-'use client'
-
-import { useState } from 'react'
-import { Bot, Send } from 'lucide-react'
+import { endOfMonth, format, startOfMonth } from 'date-fns'
+import { redirect } from 'next/navigation'
 import { TopBar } from '@/components/layout/top-bar'
+import { createClient } from '@/lib/supabase/server'
+import { AdvisorContent } from './advisor-content'
 
-const prompts = ["What's my net worth?", 'How much did I spend on food last month?', 'Am I on track for my goals?', 'What subscriptions should I cancel?']
+export const dynamic = 'force-dynamic'
 
-export default function AdvisorPage() {
-  const [messages, setMessages] = useState([{ role: 'assistant', content: "Hello! I'm your Summit AI Financial Advisor. I have full access to your financial data. Ask me anything." }])
-  const [input, setInput] = useState('')
-  const [loading, setLoading] = useState(false)
+export default async function AdvisorPage() {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) redirect('/login')
 
-  async function sendMessage(content: string) {
-    if (!content.trim()) return
-    const nextMessages = [...messages, { role: 'user', content }]
-    setMessages(nextMessages)
-    setInput('')
-    setLoading(true)
-    try {
-      const res = await fetch('/api/ai/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: nextMessages }) })
-      const data = await res.json()
-      setMessages([...nextMessages, { role: 'assistant', content: data.message || data.error || 'No response returned.' }])
-    } finally {
-      setLoading(false)
-    }
+  const now = new Date()
+  const monthStart = format(startOfMonth(now), 'yyyy-MM-dd')
+  const monthEnd = format(endOfMonth(now), 'yyyy-MM-dd')
+
+  const [{ data: accounts }, { data: txThisMonth }, { data: goals }, { data: budgets }] = await Promise.all([
+    supabase.from('accounts').select('type, current_balance, name').eq('user_id', user.id),
+    supabase.from('transactions').select('amount, category, name, date').eq('user_id', user.id).gte('date', monthStart).lte('date', monthEnd),
+    supabase.from('goals').select('name, target_amount, current_amount, type').eq('user_id', user.id).eq('is_completed', false),
+    supabase.from('budgets').select('category, amount').eq('user_id', user.id).gte('month', monthStart),
+  ])
+
+  const assets = (accounts || []).filter((a) => a.type !== 'credit' && a.type !== 'loan').reduce((s, a) => s + Number(a.current_balance || 0), 0)
+  const liabilities = (accounts || []).filter((a) => a.type === 'credit' || a.type === 'loan').reduce((s, a) => s + Math.abs(Number(a.current_balance || 0)), 0)
+  const income = (txThisMonth || []).filter((t) => Number(t.amount) < 0).reduce((s, t) => s + Math.abs(Number(t.amount)), 0)
+  const expenses = (txThisMonth || []).filter((t) => Number(t.amount) > 0).reduce((s, t) => s + Number(t.amount), 0)
+
+  const financialContext = {
+    net_worth: assets - liabilities,
+    total_assets: assets,
+    total_liabilities: liabilities,
+    month_income: income,
+    month_expenses: expenses,
+    savings_rate: income > 0 ? Math.round(((income - expenses) / income) * 100) : 0,
+    active_goals: goals?.length || 0,
+    goals: goals || [],
+    budgets: budgets || [],
   }
 
   return (
-    <div className="flex h-full min-h-screen flex-col">
-      <TopBar title="AI Advisor" subtitle="Ask financial questions against your live Summit data." />
-      <div className="flex flex-1 flex-col px-6 py-6">
-        <div className="mb-4 flex flex-wrap gap-2">{prompts.map((prompt) => <button key={prompt} onClick={() => sendMessage(prompt)} className="rounded-full border border-border bg-panel px-4 py-2 text-sm text-secondary transition hover:border-teal/30 hover:text-primary">{prompt}</button>)}</div>
-        <div className="flex-1 space-y-4 overflow-y-auto rounded-3xl border border-border bg-surface p-5 shadow-card">
-          {messages.map((message, index) => (
-            <div key={index} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={message.role === 'user' ? 'max-w-[70%] rounded-3xl bg-teal px-5 py-4 text-sm text-canvas' : 'max-w-[70%] rounded-3xl border border-border bg-panel px-5 py-4 text-sm text-primary'}>
-                {message.role === 'assistant' && <div className="mb-2 flex items-center gap-2 text-xs uppercase tracking-[0.24em] text-muted"><Bot size={14} className="text-teal" /> Summit AI</div>}
-                {message.content}
-              </div>
-            </div>
-          ))}
-          {loading && <div className="max-w-[70%] rounded-3xl border border-border bg-panel px-5 py-4 text-sm text-secondary">Thinking...</div>}
-        </div>
-        <form onSubmit={(e) => { e.preventDefault(); void sendMessage(input) }} className="mt-4 flex gap-3">
-          <input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Ask about spending, net worth, budgets, goals, or MRR..." className="flex-1 rounded-2xl border border-border bg-surface px-4 py-3 text-sm text-primary outline-none placeholder:text-muted" />
-          <button className="inline-flex items-center gap-2 rounded-2xl bg-teal px-5 py-3 text-sm font-medium text-canvas"><Send size={15} /> Send</button>
-        </form>
-      </div>
+    <div className="flex min-h-full flex-col">
+      <TopBar title="AI Financial Advisor" subtitle="Your personal CFO — powered by real data" />
+      <AdvisorContent financialContext={financialContext} userId={user.id} />
     </div>
   )
 }

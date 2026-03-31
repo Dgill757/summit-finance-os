@@ -64,10 +64,25 @@ export async function POST(request: Request) {
       data: { user },
     } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    const { messages } = await request.json()
+    const { messages, financialContext } = await request.json()
+    const contextPrompt = financialContext
+      ? `
+CURRENT FINANCIAL SNAPSHOT FOR DAN GILL:
+- Net Worth: $${Number(financialContext.net_worth || 0).toFixed(2)}
+- Total Assets: $${Number(financialContext.total_assets || 0).toFixed(2)}
+- Total Liabilities: $${Number(financialContext.total_liabilities || 0).toFixed(2)}
+- This Month Income: $${Number(financialContext.month_income || 0).toFixed(2)}
+- This Month Expenses: $${Number(financialContext.month_expenses || 0).toFixed(2)}
+- Savings Rate: ${financialContext.savings_rate || 0}%
+- Active Goals: ${financialContext.active_goals || 0}
+${financialContext.goals?.map((g: any) => `  • ${g.name}: $${g.current_amount} of $${g.target_amount} (${g.type})`).join('\n') || ''}
+
+Use this data when answering questions. Always be specific with dollar amounts.
+`
+      : ''
     const response = await openai.chat.completions.create({
       model: 'gpt-4o',
-      messages: [{ role: 'system', content: AI_SYSTEM_PROMPT }, ...messages],
+      messages: [{ role: 'system', content: `${AI_SYSTEM_PROMPT}\n${contextPrompt}` }, ...messages],
       tools: AI_FUNCTIONS.map((f) => ({ type: 'function' as const, function: f })),
       tool_choice: 'auto',
     })
@@ -77,7 +92,7 @@ export async function POST(request: Request) {
       const toolResults = await Promise.all(functionCalls.map(async (tc) => ({ tool_call_id: tc.id, role: 'tool' as const, content: JSON.stringify(await executeFunctionCall(tc.function.name, JSON.parse(tc.function.arguments), supabase, user.id)) })))
       const final = await openai.chat.completions.create({
         model: 'gpt-4o',
-        messages: [{ role: 'system', content: AI_SYSTEM_PROMPT }, ...messages, msg, ...toolResults],
+        messages: [{ role: 'system', content: `${AI_SYSTEM_PROMPT}\n${contextPrompt}` }, ...messages, msg, ...toolResults],
       })
       return NextResponse.json({ message: final.choices[0].message.content })
     }
