@@ -187,6 +187,22 @@ CREATE TABLE IF NOT EXISTS family_invites (
 ALTER TABLE family_invites ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Users own family invites" ON family_invites USING (auth.uid() = user_id);
 
+CREATE TABLE IF NOT EXISTS manual_bills (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  amount NUMERIC(14,2) NOT NULL,
+  category TEXT DEFAULT 'Other',
+  due_day INTEGER,
+  is_business BOOLEAN DEFAULT FALSE,
+  is_active BOOLEAN DEFAULT TRUE,
+  notes TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+ALTER TABLE manual_bills ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users own their bills" ON manual_bills USING (auth.uid() = user_id);
+
 CREATE TABLE IF NOT EXISTS net_worth_snapshots (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,

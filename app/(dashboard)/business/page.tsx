@@ -1,3 +1,4 @@
+import { endOfMonth, format, startOfMonth } from 'date-fns'
 import { redirect } from 'next/navigation'
 import { TopBar } from '@/components/layout/top-bar'
 import { createClient } from '@/lib/supabase/server'
@@ -11,12 +12,14 @@ export default async function BusinessPage() {
     data: { user },
   } = await supabase.auth.getUser()
   if (!user) redirect('/login')
+  const monthStart = format(startOfMonth(new Date()), 'yyyy-MM-dd')
+  const monthEnd = format(endOfMonth(new Date()), 'yyyy-MM-dd')
 
   const [{ data: metrics }, { data: packages }, { data: goals }, { data: monthTransactions }] = await Promise.all([
     supabase.from('business_metrics').select('*').eq('user_id', user.id).order('month', { ascending: false }).limit(12),
     supabase.from('service_packages').select('*').eq('user_id', user.id).order('mrr', { ascending: false }),
     supabase.from('goals').select('*').eq('user_id', user.id).eq('type', 'business'),
-    supabase.from('transactions').select('amount, is_business').eq('user_id', user.id),
+    supabase.from('transactions').select('amount, is_business').eq('user_id', user.id).gte('date', monthStart).lte('date', monthEnd),
   ])
 
   const currentMRR = Number(metrics?.[0]?.mrr || 0)

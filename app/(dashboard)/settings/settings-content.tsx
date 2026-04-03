@@ -48,6 +48,7 @@ export default function SettingsContent({
   async function syncAll() {
     await Promise.all([fetch('/api/plaid/accounts', { method: 'POST' }), fetch('/api/plaid/transactions', { method: 'POST' })])
     toast.success('Sync triggered')
+    router.refresh()
   }
 
   async function disconnect(itemId: string) {

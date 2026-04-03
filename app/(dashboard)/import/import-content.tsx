@@ -214,6 +214,9 @@ export function ImportContent({ accounts }: { accounts: Account[] }) {
       setStep(4)
       toast.success(`Imported ${data.imported} transactions`)
       router.refresh()
+      window.setTimeout(() => {
+        router.push('/dashboard?imported=true')
+      }, 2000)
     } catch (error: any) {
       toast.error(error.message || 'Import failed')
     } finally {

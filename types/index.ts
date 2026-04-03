@@ -53,6 +53,20 @@ export interface SubscriptionRecord {
   category: string
 }
 
+export interface ManualBillRecord {
+  id: string
+  user_id?: string
+  name: string
+  amount: number
+  category?: string | null
+  due_day?: number | null
+  is_business?: boolean | null
+  is_active?: boolean | null
+  notes?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+}
+
 export interface ManualAssetRecord {
   id: string
   user_id?: string
