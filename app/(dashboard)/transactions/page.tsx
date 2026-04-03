@@ -11,7 +11,7 @@ export default async function TransactionsPage() {
   } = await supabase.auth.getUser()
 
   const [{ data: transactions }, { data: accounts }] = await Promise.all([
-    supabase.from('transactions').select('*, account:accounts(name)').eq('user_id', user?.id).order('date', { ascending: false }).range(0, 199),
+    supabase.from('transactions').select('*, account:accounts(name, type, institution_name)').eq('user_id', user?.id).order('date', { ascending: false }),
     supabase.from('accounts').select('id, name').eq('user_id', user?.id).order('name'),
   ])
 

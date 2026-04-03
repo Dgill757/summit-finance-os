@@ -1,7 +1,8 @@
-import { endOfMonth, format, startOfMonth, subMonths } from 'date-fns'
+import { endOfMonth, format, startOfMonth } from 'date-fns'
 import { redirect } from 'next/navigation'
 import { TopBar } from '@/components/layout/top-bar'
 import { createClient } from '@/lib/supabase/server'
+import { avgMonthly, expensesByCategory, isRealIncome, monthsBetween, savingsRate, sumExpenses } from '@/lib/utils/finance'
 import { AdvisorContent } from './advisor-content'
 
 export const dynamic = 'force-dynamic'
@@ -14,8 +15,6 @@ export default async function AdvisorPage() {
   if (!user) redirect('/login')
 
   const now = new Date()
-  const threeMonthsAgo = format(subMonths(now, 3), 'yyyy-MM-dd')
-  const eighteenMonthsAgo = format(subMonths(now, 18), 'yyyy-MM-dd')
   const monthStart = format(startOfMonth(now), 'yyyy-MM-dd')
   const monthEnd = format(endOfMonth(now), 'yyyy-MM-dd')
 
@@ -23,35 +22,24 @@ export default async function AdvisorPage() {
     .from('transactions')
     .select('amount, category, name, merchant_name, date')
     .eq('user_id', user.id)
-    .gte('date', eighteenMonthsAgo)
-    .order('date', { ascending: false })
+    .order('date', { ascending: true })
 
   const txCount = allTransactions?.length || 0
   const thisMonthTx = (allTransactions || []).filter((transaction) => transaction.date >= monthStart && transaction.date <= monthEnd)
-  const monthIncome = thisMonthTx.filter((transaction) => Number(transaction.amount) < 0).reduce((sum, transaction) => sum + Math.abs(Number(transaction.amount)), 0)
-  const monthExpenses = thisMonthTx.filter((transaction) => Number(transaction.amount) > 0).reduce((sum, transaction) => sum + Number(transaction.amount), 0)
+  const monthIncome = thisMonthTx.filter(isRealIncome).reduce((sum, transaction) => sum + Math.abs(Number(transaction.amount)), 0)
+  const monthExpenses = sumExpenses(thisMonthTx as any)
 
-  const recentTx = (allTransactions || []).filter((transaction) => transaction.date >= threeMonthsAgo && Number(transaction.amount) > 0)
-  const categoryTotals: Record<string, number> = {}
-  for (const transaction of recentTx) {
-    const category = transaction.category || 'Other'
-    categoryTotals[category] = (categoryTotals[category] || 0) + Number(transaction.amount)
-  }
-  const topCategories = Object.entries(categoryTotals)
+  const dataMonths = allTransactions?.length ? monthsBetween(allTransactions[0].date, allTransactions[allTransactions.length - 1].date) : 1
+  const totalIncome = (allTransactions || []).filter(isRealIncome).reduce((sum, transaction) => sum + Math.abs(Number(transaction.amount)), 0)
+  const totalExpenses = sumExpenses((allTransactions || []) as any)
+  const avgMonthlyIncome = totalIncome / dataMonths
+  const avgMonthlyExpenses = totalExpenses / dataMonths
+  const avgSavingsRate = savingsRate(avgMonthlyIncome, avgMonthlyExpenses)
+
+  const topCategories = Object.entries(expensesByCategory(allTransactions as any))
     .sort((a, b) => b[1] - a[1])
     .slice(0, 6)
     .map(([category, amount]) => ({ category, amount }))
-
-  const totalIncome3mo = (allTransactions || [])
-    .filter((transaction) => transaction.date >= threeMonthsAgo && Number(transaction.amount) < 0)
-    .reduce((sum, transaction) => sum + Math.abs(Number(transaction.amount)), 0)
-  const totalSpend3mo = (allTransactions || [])
-    .filter((transaction) => transaction.date >= threeMonthsAgo && Number(transaction.amount) > 0)
-    .reduce((sum, transaction) => sum + Number(transaction.amount), 0)
-
-  const avgMonthlyIncome = totalIncome3mo / 3
-  const avgMonthlySpend = totalSpend3mo / 3
-  const savingsRate = avgMonthlyIncome > 0 ? Math.round(((avgMonthlyIncome - avgMonthlySpend) / avgMonthlyIncome) * 100) : 0
 
   const merchantMonths: Record<string, Set<string>> = {}
   const merchantAmounts: Record<string, number> = {}
@@ -85,9 +73,8 @@ export default async function AdvisorPage() {
 
   const { data: goals } = await supabase.from('goals').select('*').eq('user_id', user.id).eq('is_completed', false)
 
-  const dates = (allTransactions || []).map((transaction) => transaction.date).sort()
-  const dataFrom = dates[0] || monthStart
-  const dataTo = dates[dates.length - 1] || monthEnd
+  const dataFrom = allTransactions?.[0]?.date || monthStart
+  const dataTo = allTransactions?.[allTransactions.length - 1]?.date || monthEnd
 
   const financialContext = {
     transaction_count: txCount,
@@ -95,9 +82,9 @@ export default async function AdvisorPage() {
     data_to: dataTo,
     month_income: monthIncome,
     month_expenses: monthExpenses,
-    savings_rate: savingsRate,
+    savings_rate: avgSavingsRate,
     avg_monthly_income: avgMonthlyIncome,
-    avg_monthly_expenses: avgMonthlySpend,
+    avg_monthly_expenses: avgMonthlyExpenses,
     top_categories: topCategories,
     subscriptions,
     total_subscriptions_monthly: totalSubscriptions,

@@ -1,4 +1,4 @@
-import { endOfMonth, format, startOfMonth, subMonths } from 'date-fns'
+import { format, startOfMonth, subMonths } from 'date-fns'
 import { redirect } from 'next/navigation'
 import { TopBar } from '@/components/layout/top-bar'
 import { createClient } from '@/lib/supabase/server'
@@ -47,15 +47,15 @@ export default async function BillsPage() {
     .sort((a, b) => b.avg_amount - a.avg_amount)
 
   const now = new Date()
-  const { data: incomeTx } = await supabase
+  const { data: last3MonthsIncome } = await supabase
     .from('transactions')
     .select('amount')
     .eq('user_id', user.id)
-    .gte('date', format(startOfMonth(now), 'yyyy-MM-dd'))
-    .lte('date', format(endOfMonth(now), 'yyyy-MM-dd'))
+    .gte('date', format(subMonths(startOfMonth(now), 3), 'yyyy-MM-dd'))
+    .lt('date', format(startOfMonth(now), 'yyyy-MM-dd'))
     .lt('amount', 0)
 
-  const monthlyIncome = (incomeTx || []).reduce((sum, tx) => sum + Math.abs(Number(tx.amount)), 0)
+  const monthlyIncome = last3MonthsIncome ? last3MonthsIncome.reduce((sum, tx) => sum + Math.abs(Number(tx.amount)), 0) / 3 : 0
 
   return (
     <div className="flex min-h-full flex-col">

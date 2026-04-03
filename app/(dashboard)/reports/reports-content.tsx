@@ -1,15 +1,16 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { Area, AreaChart, Bar, BarChart, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Area, AreaChart, Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { buildMonthlySeries, groupCategoryTotals } from '@/lib/utils/finance'
 import { getCategoryInfo } from '@/lib/utils/categories'
 import { formatCurrency } from '@/lib/utils/formatters'
 import { TransactionRecord } from '@/types'
 
-const TABS = ['cash-flow', 'spending', '50-30-20', 'year-review'] as const
-const NEEDS = ['Housing', 'Utilities', 'Transportation', 'Health', 'Groceries']
-const WANTS = ['Food & Dining', 'Entertainment', 'Shopping', 'Travel', 'Subscriptions']
+const TABS = ['cash-flow', 'spending', '50-30-20', 'business-vs-personal', 'year-review'] as const
+const NEEDS_CATEGORIES = ['Housing', 'Utilities', 'Transportation', 'Health', 'Groceries', 'Debt Payments', 'Insurance', 'Bank Fees']
+const WANTS_CATEGORIES = ['Food & Dining', 'Entertainment', 'Shopping', 'Travel', 'Subscriptions', 'Alcohol & Bars', 'Personal Care']
+const BUSINESS_CATEGORIES = ['Business', 'Business Services']
 const CATEGORY_COLORS = ['#14b8a6', '#3b82f6', '#f59e0b', '#ef4444', '#22c55e', '#a855f7']
 
 function monthKey(date: string) {
@@ -18,10 +19,10 @@ function monthKey(date: string) {
 
 export default function ReportsContent({ transactions }: { transactions: TransactionRecord[] }) {
   const [tab, setTab] = useState<(typeof TABS)[number]>('cash-flow')
-
   const monthlySeries = useMemo(() => buildMonthlySeries(transactions, 12), [transactions])
   const last30 = useMemo(() => transactions.filter((tx) => Number(tx.amount) > 0 && new Date(tx.date) >= new Date(Date.now() - 30 * 86_400_000)), [transactions])
-  const categoryData = useMemo(() => groupCategoryTotals(last30), [last30])
+  const personalExpenses = useMemo(() => transactions.filter((tx) => Number(tx.amount) > 0 && !BUSINESS_CATEGORIES.includes(tx.category || '')), [transactions])
+  const categoryData = useMemo(() => groupCategoryTotals(last30.filter((tx) => !BUSINESS_CATEGORIES.includes(tx.category || ''))), [last30])
   const topMerchants = useMemo(
     () =>
       Object.entries(
@@ -39,36 +40,24 @@ export default function ReportsContent({ transactions }: { transactions: Transac
 
   const categoryTrend = useMemo(() => {
     const recentMonths = monthlySeries.slice(-6).map((row) => row.monthKey)
-    const topCategories = groupCategoryTotals(transactions.filter((tx) => recentMonths.includes(monthKey(tx.date)))).slice(0, 5).map((item) => item.category)
+    const topCategories = groupCategoryTotals(personalExpenses.filter((tx) => recentMonths.includes(monthKey(tx.date)))).slice(0, 5).map((item) => item.category)
     return recentMonths.map((month) => {
       const row: Record<string, string | number> = { month }
       topCategories.forEach((category) => {
-        row[category] = transactions
-          .filter((tx) => Number(tx.amount) > 0 && monthKey(tx.date) === month && (tx.category || 'Other') === category)
+        row[category] = personalExpenses
+          .filter((tx) => monthKey(tx.date) === month && (tx.category || 'Other') === category)
           .reduce((sum, tx) => sum + Number(tx.amount), 0)
       })
       return row
     })
-  }, [monthlySeries, transactions])
+  }, [monthlySeries, personalExpenses])
 
   const currentMonth = monthlySeries[monthlySeries.length - 1]
   const currentMonthKey = currentMonth?.monthKey || ''
-  const sameMonthLastYearKey = currentMonthKey
-    ? `${Number(currentMonthKey.slice(0, 4)) - 1}-${currentMonthKey.slice(5, 7)}`
-    : ''
+  const currentMonthCategories = groupCategoryTotals(personalExpenses.filter((tx) => monthKey(tx.date) === currentMonthKey))
 
-  const currentMonthCategories = groupCategoryTotals(transactions.filter((tx) => Number(tx.amount) > 0 && monthKey(tx.date) === currentMonthKey))
-  const lastYearSameMonthCategories = groupCategoryTotals(transactions.filter((tx) => Number(tx.amount) > 0 && monthKey(tx.date) === sameMonthLastYearKey))
-  const biggestIncreases = currentMonthCategories
-    .map((item) => {
-      const lastYearAmount = lastYearSameMonthCategories.find((row) => row.category === item.category)?.amount || 0
-      return { category: item.category, delta: item.amount - lastYearAmount }
-    })
-    .sort((a, b) => b.delta - a.delta)
-    .slice(0, 5)
-
-  const needs = currentMonthCategories.filter((row) => NEEDS.includes(row.category)).reduce((sum, row) => sum + row.amount, 0)
-  const wants = currentMonthCategories.filter((row) => WANTS.includes(row.category)).reduce((sum, row) => sum + row.amount, 0)
+  const needs = currentMonthCategories.filter((row) => NEEDS_CATEGORIES.includes(row.category)).reduce((sum, row) => sum + row.amount, 0)
+  const wants = currentMonthCategories.filter((row) => WANTS_CATEGORIES.includes(row.category)).reduce((sum, row) => sum + row.amount, 0)
   const income = currentMonth?.income || 0
   const savings = Math.max(0, income - (needs + wants))
   const totalForRule = Math.max(income, 1)
@@ -77,6 +66,11 @@ export default function ReportsContent({ transactions }: { transactions: Transac
     { label: 'Wants', value: wants, pct: (wants / totalForRule) * 100, color: '#f59e0b' },
     { label: 'Savings', value: savings, pct: (savings / totalForRule) * 100, color: '#22c55e' },
   ]
+
+  const businessExpenses = transactions.filter((tx) => Number(tx.amount) > 0 && BUSINESS_CATEGORIES.includes(tx.category || ''))
+  const businessServices = businessExpenses.filter((tx) => (tx.category || '') === 'Business Services').reduce((sum, tx) => sum + Number(tx.amount), 0)
+  const personalSubscriptions = transactions.filter((tx) => Number(tx.amount) > 0 && (tx.category || '') === 'Subscriptions').reduce((sum, tx) => sum + Number(tx.amount), 0)
+  const totalBusinessExpenses = businessExpenses.reduce((sum, tx) => sum + Number(tx.amount), 0)
 
   const yearRows = monthlySeries.filter((row) => row.monthKey.startsWith(String(new Date().getFullYear())))
   const yearIncome = yearRows.reduce((sum, row) => sum + row.income, 0)
@@ -133,12 +127,6 @@ export default function ReportsContent({ transactions }: { transactions: Transac
               </AreaChart>
             </ResponsiveContainer>
           </div>
-          <div className="overflow-x-auto rounded-2xl border border-border bg-surface p-5 card-hover">
-            <table className="w-full text-sm">
-              <thead className="text-left text-muted"><tr><th>Month</th><th>Income</th><th>Expenses</th><th>Savings</th><th>Savings Rate</th></tr></thead>
-              <tbody>{monthlySeries.map((row) => <tr key={row.monthKey} className="border-t border-border"><td className="py-3 text-primary">{row.month}</td><td className="font-num text-up">{formatCurrency(row.income)}</td><td className="font-num text-primary">{formatCurrency(row.expenses)}</td><td className="font-num text-teal">{formatCurrency(row.savings)}</td><td className="font-num text-secondary">{row.savingsRate.toFixed(1)}%</td></tr>)}</tbody>
-            </table>
-          </div>
         </div>
       )}
 
@@ -173,17 +161,6 @@ export default function ReportsContent({ transactions }: { transactions: Transac
             <div className="mb-3 text-xs font-mono font-semibold uppercase tracking-widest text-muted">Top Merchants</div>
             <div className="space-y-3">{topMerchants.map((merchant) => <div key={merchant.merchant} className="flex items-center justify-between rounded-xl bg-panel/50 px-4 py-3"><span className="text-primary">{merchant.merchant}</span><span className="font-num text-secondary">{formatCurrency(merchant.amount)}</span></div>)}</div>
           </div>
-          <div className="rounded-2xl border border-border bg-surface p-5 card-hover">
-            <div className="mb-3 text-xs font-mono font-semibold uppercase tracking-widest text-muted">Current Month vs Same Month Last Year</div>
-            <div className="space-y-3">
-              {biggestIncreases.map((item) => (
-                <div key={item.category} className="flex items-center justify-between rounded-xl bg-panel/50 px-4 py-3">
-                  <span className="text-primary">{item.category}</span>
-                  <span className={`font-num ${item.delta >= 0 ? 'text-down' : 'text-up'}`}>{item.delta >= 0 ? '+' : ''}{formatCurrency(item.delta)}</span>
-                </div>
-              ))}
-            </div>
-          </div>
         </div>
       )}
 
@@ -205,10 +182,14 @@ export default function ReportsContent({ transactions }: { transactions: Transac
               </div>
             ))}
           </div>
-          <div className="text-sm text-secondary">
-            You're spending <span className="font-num text-primary">{ratioSegments[1].pct.toFixed(1)}%</span> on wants. To hit 30%, cut{' '}
-            <span className="font-num text-primary">{formatCurrency(Math.max(0, wants - totalForRule * 0.3))}</span>/month.
-          </div>
+        </div>
+      )}
+
+      {tab === 'business-vs-personal' && (
+        <div className="grid gap-5 md:grid-cols-3">
+          <div className="rounded-2xl border border-border bg-surface p-5 card-hover"><div className="mb-3 text-xs font-mono font-semibold uppercase tracking-widest text-muted">Business Services</div><div className="font-num text-[32px] font-bold text-primary">{formatCurrency(businessServices)}</div></div>
+          <div className="rounded-2xl border border-border bg-surface p-5 card-hover"><div className="mb-3 text-xs font-mono font-semibold uppercase tracking-widest text-muted">Personal Subscriptions</div><div className="font-num text-[32px] font-bold text-primary">{formatCurrency(personalSubscriptions)}</div></div>
+          <div className="rounded-2xl border border-border bg-surface p-5 card-hover"><div className="mb-3 text-xs font-mono font-semibold uppercase tracking-widest text-muted">Total Business Expenses</div><div className="font-num text-[32px] font-bold text-primary">{formatCurrency(totalBusinessExpenses)}</div></div>
         </div>
       )}
 

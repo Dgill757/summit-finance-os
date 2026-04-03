@@ -18,8 +18,11 @@ async function executeFunctionCall(name: string, args: Record<string, any>, supa
     const byCategory: Record<string, number> = {}
     for (const tx of data || []) {
       const category = tx.category || 'Other'
-      if (!args.category || category === args.category) byCategory[category] = (byCategory[category] || 0) + Number(tx.amount)
+      if (!args.category || category === args.category) {
+        byCategory[category] = (byCategory[category] || 0) + Number(tx.amount)
+      }
     }
+
     const total = Object.values(byCategory).reduce((sum, value) => sum + value, 0)
     return {
       categories: Object.entries(byCategory)
@@ -89,8 +92,13 @@ async function executeFunctionCall(name: string, args: Record<string, any>, supa
     const end = format(endOfMonth(monthDate), 'yyyy-MM-dd')
     const { data: budgets } = await supabase.from('budgets').select('*').eq('user_id', userId).gte('month', start).lte('month', end)
     const { data: txs } = await supabase.from('transactions').select('amount, category').eq('user_id', userId).gte('date', start).lte('date', end).gt('amount', 0)
+
     const spent: Record<string, number> = {}
-    for (const tx of txs || []) spent[tx.category || 'Other'] = (spent[tx.category || 'Other'] || 0) + Number(tx.amount)
+    for (const tx of txs || []) {
+      const category = tx.category || 'Other'
+      spent[category] = (spent[category] || 0) + Number(tx.amount)
+    }
+
     return {
       budget_vs_actual: (budgets || []).map((budget) => ({
         category: budget.category,
@@ -110,6 +118,7 @@ async function executeFunctionCall(name: string, args: Record<string, any>, supa
       .gte('date', args.start_date)
       .lte('date', args.end_date)
       .lt('amount', 0)
+
     const total = (data || []).reduce((sum, tx) => sum + Math.abs(Number(tx.amount)), 0)
     return { total_income: total, transaction_count: (data || []).length }
   }
@@ -135,6 +144,7 @@ async function executeFunctionCall(name: string, args: Record<string, any>, supa
       })
       .select()
       .single()
+
     if (error) return { error: error.message }
     return { success: true, action_type: 'goal_created', message: `Goal "${args.name}" created with target $${args.target_amount}.`, goal: data }
   }
@@ -143,6 +153,7 @@ async function executeFunctionCall(name: string, args: Record<string, any>, supa
     const { data: goals } = await supabase.from('goals').select('*').eq('user_id', userId).ilike('name', `%${args.goal_name}%`).limit(1)
     const goal = goals?.[0]
     if (!goal) return { error: `Could not find goal matching "${args.goal_name}"` }
+
     const newAmount = Math.min(Number(goal.current_amount) + Number(args.amount), Number(goal.target_amount))
     const completed = newAmount >= Number(goal.target_amount)
     const { data: updatedGoal, error } = await supabase
@@ -152,7 +163,9 @@ async function executeFunctionCall(name: string, args: Record<string, any>, supa
       .eq('user_id', userId)
       .select()
       .single()
+
     if (error) return { error: error.message }
+
     await supabase.from('goal_deposits').insert({ goal_id: goal.id, amount: args.amount, note: args.note || null })
     return {
       success: true,
@@ -175,6 +188,7 @@ async function executeFunctionCall(name: string, args: Record<string, any>, supa
       },
       { onConflict: 'user_id,category,month,owner' },
     )
+
     if (error) return { error: error.message }
     return { success: true, action_type: 'budget_created', message: `Budget set: $${args.amount}/month for ${args.category}.` }
   }
@@ -186,12 +200,18 @@ async function executeFunctionCall(name: string, args: Record<string, any>, supa
       .eq('user_id', userId)
       .gte('date', format(subMonths(new Date(), 3), 'yyyy-MM-dd'))
       .gt('amount', 0)
+
     const categoryTotals: Record<string, number> = {}
-    for (const tx of txs || []) categoryTotals[tx.category || 'Other'] = (categoryTotals[tx.category || 'Other'] || 0) + Number(tx.amount)
+    for (const tx of txs || []) {
+      const category = tx.category || 'Other'
+      categoryTotals[category] = (categoryTotals[category] || 0) + Number(tx.amount)
+    }
+
     const { data: accounts } = await supabase.from('accounts').select('type, current_balance').eq('user_id', userId)
     const savings = (accounts || [])
       .filter((account) => account.type === 'depository')
       .reduce((sum, account) => sum + Number(account.current_balance || 0), 0)
+
     return {
       spending_patterns: Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]).slice(0, 5),
       current_savings: savings,
@@ -206,7 +226,9 @@ async function executeFunctionCall(name: string, args: Record<string, any>, supa
       .eq('user_id', userId)
       .gte('date', format(subMonths(new Date(), 3), 'yyyy-MM-dd'))
       .gt('amount', 0)
+
     const { data: bills } = await supabase.from('manual_bills').select('*').eq('user_id', userId).eq('is_active', true)
+
     const merchantMonths: Record<string, Set<string>> = {}
     const merchantAmounts: Record<string, number[]> = {}
     for (const tx of txs || []) {
@@ -217,6 +239,7 @@ async function executeFunctionCall(name: string, args: Record<string, any>, supa
       merchantAmounts[key] ??= []
       merchantAmounts[key].push(Number(tx.amount))
     }
+
     const recurring = Object.entries(merchantMonths)
       .filter(([, months]) => months.size >= 2)
       .map(([merchant]) => ({
@@ -224,6 +247,7 @@ async function executeFunctionCall(name: string, args: Record<string, any>, supa
         avg_monthly: (merchantAmounts[merchant] || []).reduce((sum, amount) => sum + amount, 0) / Math.max((merchantAmounts[merchant] || []).length, 1),
       }))
       .sort((a, b) => b.avg_monthly - a.avg_monthly)
+
     return {
       recurring_charges: recurring,
       manual_bills: bills || [],
@@ -241,10 +265,16 @@ async function executeFunctionCall(name: string, args: Record<string, any>, supa
       .eq('user_id', userId)
       .gte('date', format(startOfMonth(now), 'yyyy-MM-dd'))
       .lte('date', format(endOfMonth(now), 'yyyy-MM-dd'))
+
     const income = (txs || []).filter((tx) => Number(tx.amount) < 0).reduce((sum, tx) => sum + Math.abs(Number(tx.amount)), 0)
     const expenses = (txs || []).filter((tx) => Number(tx.amount) > 0).reduce((sum, tx) => sum + Number(tx.amount), 0)
+
     const categoryTotals: Record<string, number> = {}
-    for (const tx of (txs || []).filter((row) => Number(row.amount) > 0)) categoryTotals[tx.category || 'Other'] = (categoryTotals[tx.category || 'Other'] || 0) + Number(tx.amount)
+    for (const tx of (txs || []).filter((row) => Number(row.amount) > 0)) {
+      const category = tx.category || 'Other'
+      categoryTotals[category] = (categoryTotals[category] || 0) + Number(tx.amount)
+    }
+
     return {
       income,
       current_expenses: expenses,
@@ -264,6 +294,7 @@ async function executeFunctionCall(name: string, args: Record<string, any>, supa
       .eq('user_id', userId)
       .gte('date', format(startOfMonth(now), 'yyyy-MM-dd'))
       .lte('date', format(endOfMonth(now), 'yyyy-MM-dd'))
+
     const assets = (accounts || [])
       .filter((account) => account.type !== 'credit' && account.type !== 'loan')
       .reduce((sum, account) => sum + Number(account.current_balance || 0), 0)
@@ -272,6 +303,7 @@ async function executeFunctionCall(name: string, args: Record<string, any>, supa
       .reduce((sum, account) => sum + Math.abs(Number(account.current_balance || 0)), 0)
     const income = (txs || []).filter((tx) => Number(tx.amount) < 0).reduce((sum, tx) => sum + Math.abs(Number(tx.amount)), 0)
     const expenses = (txs || []).filter((tx) => Number(tx.amount) > 0).reduce((sum, tx) => sum + Number(tx.amount), 0)
+
     return {
       net_worth: assets - liabilities,
       total_assets: assets,
@@ -298,6 +330,7 @@ async function executeFunctionCall(name: string, args: Record<string, any>, supa
       })
       .select()
       .single()
+
     if (error) return { error: error.message }
     return { success: true, action_type: 'bill_added', message: `Added monthly bill "${args.name}" for $${args.amount}.`, bill: data }
   }
@@ -318,9 +351,8 @@ export async function POST(request: Request) {
       .from('transactions')
       .select('amount, category, name, date')
       .eq('user_id', user.id)
-      .gte('date', format(subMonths(new Date(), 2), 'yyyy-MM-dd'))
       .order('date', { ascending: false })
-      .limit(200)
+      .limit(1000)
 
     const categoryTotals: Record<string, number> = {}
     const merchantTotals: Record<string, number> = {}
@@ -340,10 +372,12 @@ export async function POST(request: Request) {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 8)
       .map(([category, amount]) => `${category}: $${amount.toFixed(2)}`)
+
     const topMerchants = Object.entries(merchantTotals)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 10)
       .map(([merchant, amount]) => `${merchant}: $${amount.toFixed(2)}`)
+
     const likelySubscriptions = Object.entries(merchantMonths)
       .filter(([, months]) => months.size >= 2)
       .map(([merchant]) => `${merchant}: $${((merchantTotals[merchant] || 0) / Math.max(merchantMonths[merchant]?.size || 1, 1)).toFixed(2)}/mo`)
@@ -355,7 +389,7 @@ export async function POST(request: Request) {
 DATA COVERAGE: ${financialContext.transaction_count || 0} transactions analyzed
 DATE RANGE: ${financialContext.data_from || 'unknown'} to ${financialContext.data_to || 'unknown'}
 
-MONTHLY AVERAGES (last 3 months):
+MONTHLY AVERAGES (across imported history):
 - Average Monthly Income: $${Number(financialContext.avg_monthly_income || 0).toFixed(2)}
 - Average Monthly Spending: $${Number(financialContext.avg_monthly_expenses || 0).toFixed(2)}
 - Average Savings Rate: ${financialContext.savings_rate || 0}%
@@ -370,7 +404,7 @@ NET WORTH (from bank accounts):
 - Net Worth: $${Number(financialContext.net_worth || 0).toFixed(2)}
 Note: Net worth may be understated if using CSV import (account balances not synced)
 
-TOP SPENDING CATEGORIES (last 3 months):
+TOP SPENDING CATEGORIES:
 ${(financialContext.top_categories || []).map((category: Record<string, any>) => `- ${category.category}: $${Number(category.amount).toFixed(2)}`).join('\n')}
 
 DETECTED SUBSCRIPTIONS/RECURRING ($${Number(financialContext.total_subscriptions_monthly || 0).toFixed(2)}/month total):
@@ -389,7 +423,7 @@ or categories, USE FUNCTION CALLS to get exact data from the database.
     const enhancedContext = `
 ${contextPrompt}
 
-SPENDING ANALYSIS (last 2 months):
+SPENDING ANALYSIS (full imported history, capped at 1000 recent transactions):
 Top Categories: ${topCategories.join(', ') || 'None yet'}
 Top Merchants: ${topMerchants.join(', ') || 'None yet'}
 Likely Subscriptions: ${likelySubscriptions.join(', ') || 'None yet'}

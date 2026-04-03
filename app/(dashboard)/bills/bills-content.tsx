@@ -135,7 +135,7 @@ export function BillsContent({
       <section className="rounded-2xl border border-border bg-surface p-5 card-hover">
         <div className="mb-4 grid gap-4 xl:grid-cols-5 md:grid-cols-2">
           {[
-            { label: 'Monthly Income', value: monthlyIncome, tone: 'text-up', sub: 'Live this month' },
+            { label: 'Avg Monthly Income (3mo)', value: monthlyIncome, tone: 'text-up', sub: 'Rolling average' },
             { label: 'Total Fixed Bills', value: fixedBillsTotal, tone: 'text-down', sub: `${bills.length} bills` },
             { label: 'Detected Recurring', value: recurringTotal, tone: 'text-warn', sub: `${detectedBills.length} charges` },
             { label: 'Total Monthly Outflow', value: totalOutflow, tone: 'text-down', sub: 'Bills + recurring' },

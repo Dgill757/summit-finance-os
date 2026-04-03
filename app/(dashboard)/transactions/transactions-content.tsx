@@ -8,7 +8,7 @@ import { CATEGORY_LIST, getCategoryInfo } from '@/lib/utils/categories'
 import { formatCurrency, formatDateShort } from '@/lib/utils/formatters'
 import { TransactionRecord } from '@/types'
 
-const PAGE_SIZE = 200
+const PAGE_SIZE = 50
 
 export default function TransactionsContent({
   transactions,
@@ -170,10 +170,10 @@ export default function TransactionsContent({
           })}
         </div>
         <div className="flex items-center justify-between border-t border-border px-5 py-4 text-sm text-secondary">
-          <span>{visibleRows.length} of {filtered.length} transactions shown</span>
+          <span>Showing {visibleRows.length} of {filtered.length} transactions</span>
           {visibleRows.length < filtered.length ? (
             <button onClick={() => setPage((current) => current + 1)} className="rounded-xl border border-border px-4 py-2 text-sm text-secondary transition hover:border-teal/30 hover:text-primary">
-              Load more
+              Load 50 more
             </button>
           ) : null}
         </div>

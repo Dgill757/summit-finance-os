@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Bot, Landmark, PiggyBank, Target, TrendingDown, TrendingUp, Wallet } from 'lucide-react'
+import { AlertTriangle, Bot, Landmark, PiggyBank, Target, TrendingDown, TrendingUp, Wallet } from 'lucide-react'
 import { toast } from 'sonner'
 import { TopBar } from '@/components/layout/top-bar'
 import { StatCard } from '@/components/dashboard/stat-card'
@@ -34,6 +34,15 @@ export default function DashboardContent({
   topCategory,
   upcomingBills,
   showImportSuccess,
+  avgIncome,
+  avgExpenses,
+  avgSurplus,
+  currentMonthDay,
+  currentMonthLength,
+  lifetimeAvgMonthlyIncome,
+  lifetimeAvgMonthlyExpenses,
+  dataCoverage,
+  habitInsights,
 }: {
   accountsCount: number
   hasData: boolean
@@ -53,6 +62,15 @@ export default function DashboardContent({
   topCategory: { category: string; amount: number }
   upcomingBills: Array<{ merchant: string; monthly_amount: number; next_date: string; days_until: number }>
   showImportSuccess: boolean
+  avgIncome: number
+  avgExpenses: number
+  avgSurplus: number
+  currentMonthDay: number
+  currentMonthLength: number
+  lifetimeAvgMonthlyIncome: number
+  lifetimeAvgMonthlyExpenses: number
+  dataCoverage: string
+  habitInsights: string[]
 }) {
   const [syncing, setSyncing] = useState(false)
   const [aiInsight, setAiInsight] = useState('')
@@ -60,12 +78,9 @@ export default function DashboardContent({
   const router = useRouter()
 
   const insightKey = useMemo(() => `dashboard-insight-${new Date().toISOString().slice(0, 10)}`, [])
-  const currentMonth = cashFlowData[cashFlowData.length - 1]
-  const previousMonth = cashFlowData[cashFlowData.length - 2]
-  const surplusDelta = previousMonth ? cashFlow - (previousMonth.income - previousMonth.expenses) : 0
-  const wantsWidth = income > 0 ? Math.min(100, (variableSpend / income) * 100) : 0
-  const billsWidth = income > 0 ? Math.min(100, (fixedBillsTotal / income) * 100) : 0
-  const savingsWidth = income > 0 ? Math.min(100, (Math.max(cashFlow, 0) / income) * 100) : 0
+  const wantsWidth = avgIncome > 0 ? Math.min(100, (variableSpend / avgIncome) * 100) : 0
+  const billsWidth = avgIncome > 0 ? Math.min(100, (fixedBillsTotal / avgIncome) * 100) : 0
+  const savingsWidth = avgIncome > 0 ? Math.min(100, (Math.max(avgSurplus, 0) / avgIncome) * 100) : 0
 
   useEffect(() => {
     const cached = localStorage.getItem(insightKey)
@@ -82,20 +97,20 @@ export default function DashboardContent({
           messages: [
             {
               role: 'user',
-              content: `In one sentence, give Dan Gill the single most important financial insight from this data: Net Worth $${netWorth}, Month Expenses $${monthExpenses}, Savings Rate ${savingsRate}%, ${topCategory.category} is the top spending category at $${topCategory.amount}. Be specific and actionable.`,
+              content: `In one sentence, give Dan Gill the single most important financial insight from this data: Avg Monthly Income $${avgIncome}, Avg Monthly Expenses $${avgExpenses}, Savings Rate ${savingsRate}%, ${topCategory.category} is the top spending category at $${topCategory.amount}. Be specific and actionable.`,
             },
           ],
-          financialContext: { net_worth: netWorth, month_expenses: monthExpenses, savings_rate: savingsRate, top_category: topCategory.category },
+          financialContext: { avg_monthly_income: avgIncome, avg_monthly_expenses: avgExpenses, savings_rate: savingsRate, top_category: topCategory.category },
         }),
       })
       const data = await res.json()
-      const message = data.message || 'Your spending concentration is the clearest lever to improve this month.'
+      const message = data.message || 'Your spending concentration is the clearest lever to improve your monthly surplus.'
       setAiInsight(message)
       localStorage.setItem(insightKey, message)
     }
 
     void loadInsight()
-  }, [insightKey, monthExpenses, netWorth, savingsRate, topCategory.amount, topCategory.category])
+  }, [avgExpenses, avgIncome, insightKey, savingsRate, topCategory.amount, topCategory.category])
 
   const handleSync = async () => {
     setSyncing(true)
@@ -106,7 +121,7 @@ export default function DashboardContent({
       toast.success(`Synced ${data.synced || 0} transactions`)
       router.refresh()
     } catch {
-      toast.error("Sync failed — check your connection")
+      toast.error('Sync failed — check your connection')
     } finally {
       setSyncing(false)
     }
@@ -167,15 +182,15 @@ export default function DashboardContent({
           <div className="mb-4 flex items-center justify-between">
             <div>
               <div className="text-xs uppercase tracking-[0.24em] text-muted">Monthly Command Center</div>
-              <h2 className="mt-2 font-display text-xl font-semibold text-primary">{new Date(`${currentMonth?.monthKey || new Date().toISOString().slice(0, 7)}-01`).toLocaleString('en-US', { month: 'long', year: 'numeric' })}</h2>
+              <h2 className="mt-2 font-display text-xl font-semibold text-primary">{new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' })}</h2>
             </div>
-            <div className="text-sm text-secondary">Savings rate <span className="font-num text-primary">{savingsRate.toFixed(1)}%</span></div>
+            <div className="text-sm text-secondary">3-month savings rate <span className="font-num text-primary">{savingsRate.toFixed(1)}%</span></div>
           </div>
           <div className="grid gap-4 xl:grid-cols-4 md:grid-cols-2">
             <div className="rounded-2xl border border-border bg-panel/50 p-4">
               <div className="text-xs uppercase tracking-[0.24em] text-muted">Income</div>
-              <div className="mt-3 font-num text-[28px] font-bold text-up">{formatCurrency(income)}</div>
-              <div className="mt-2 text-xs text-secondary">{surplusDelta >= 0 ? '+' : ''}{formatCurrency(surplusDelta)} vs last month</div>
+              <div className="mt-3 font-num text-[28px] font-bold text-up">{formatCurrency(avgIncome)}</div>
+              <div className="mt-2 text-xs text-secondary">3-month average</div>
             </div>
             <div className="rounded-2xl border border-border bg-panel/50 p-4">
               <div className="text-xs uppercase tracking-[0.24em] text-muted">Fixed Bills</div>
@@ -185,12 +200,12 @@ export default function DashboardContent({
             <div className="rounded-2xl border border-border bg-panel/50 p-4">
               <div className="text-xs uppercase tracking-[0.24em] text-muted">Variable Spend</div>
               <div className="mt-3 font-num text-[28px] font-bold text-primary">{formatCurrency(variableSpend)}</div>
-              <div className="mt-2 text-xs text-secondary">{categoryData.length} active categories</div>
+              <div className="mt-2 text-xs text-secondary">3-month average</div>
             </div>
             <div className="rounded-2xl border border-border bg-panel/50 p-4">
               <div className="text-xs uppercase tracking-[0.24em] text-muted">Left Over</div>
-              <div className={`mt-3 font-num text-[28px] font-bold ${cashFlow >= 0 ? 'text-teal' : 'text-down'}`}>{formatCurrency(cashFlow)}</div>
-              <div className="mt-2 text-xs text-secondary">{cashFlow >= 0 ? `You have ${formatCurrency(cashFlow)}/month to work with` : `You're in the hole ${formatCurrency(Math.abs(cashFlow))}/month`}</div>
+              <div className={`mt-3 font-num text-[28px] font-bold ${avgSurplus >= 0 ? 'text-teal' : 'text-down'}`}>{formatCurrency(avgSurplus)}</div>
+              <div className="mt-2 text-xs text-secondary">{avgSurplus >= 0 ? `You have ${formatCurrency(avgSurplus)}/month to work with` : `You're in the hole ${formatCurrency(Math.abs(avgSurplus))}/month`}</div>
             </div>
           </div>
           <div className="mt-5 h-3 overflow-hidden rounded-full bg-panel">
@@ -199,16 +214,83 @@ export default function DashboardContent({
             <div className="h-full bg-up" style={{ width: `${savingsWidth}%`, float: 'left' }} />
           </div>
           <div className="mt-3 text-sm text-secondary">
-            You're spending {income > 0 ? Math.round((topCategory.amount / income) * 100) : 0}% of income on {topCategory.category}. Cut $200 there to save $500/month.
+            You're spending {avgIncome > 0 ? Math.round((topCategory.amount / avgIncome) * 100) : 0}% of income on {topCategory.category}. Cut $200 there to save $500/month.
           </div>
         </section>
 
         <div className="grid gap-4 xl:grid-cols-4 md:grid-cols-2">
           <StatCard label="Net Worth" value={netWorth} delta={netWorthDelta} deltaLabel="vs latest snapshot" icon={TrendingUp} accent="teal" />
           <StatCard label="Total Assets" value={totalAssets} icon={Landmark} accent="green" />
-          <StatCard label="Month Expenses" value={monthExpenses} icon={TrendingDown} accent="red" />
-          <StatCard label="Savings Rate" value={savingsRate} format="percent" icon={PiggyBank} accent={savingsRate >= 20 ? 'green' : savingsRate >= 0 ? 'amber' : 'red'} />
+          <StatCard label="This Month Expenses" value={monthExpenses} icon={TrendingDown} accent="red" />
+          <StatCard label="3-Month Savings Rate" value={savingsRate} format="percent" icon={PiggyBank} accent={savingsRate >= 20 ? 'green' : savingsRate >= 0 ? 'amber' : 'red'} />
         </div>
+
+        <section className="grid gap-4 rounded-2xl border border-border bg-surface p-5 shadow-card md:grid-cols-3">
+          <div className="rounded-2xl border border-border bg-panel/60 p-4">
+            <div className="text-xs uppercase tracking-[0.24em] text-muted">Avg Monthly Income</div>
+            <div className="mt-3 font-num text-2xl font-bold text-up">{formatCurrency(avgIncome)}</div>
+            <div className="mt-2 text-xs text-secondary">3-month average</div>
+          </div>
+          <div className="rounded-2xl border border-border bg-panel/60 p-4">
+            <div className="text-xs uppercase tracking-[0.24em] text-muted">Avg Monthly Expenses</div>
+            <div className="mt-3 font-num text-2xl font-bold text-down">{formatCurrency(avgExpenses)}</div>
+            <div className="mt-2 text-xs text-secondary">3-month average</div>
+          </div>
+          <div className="rounded-2xl border border-border bg-panel/60 p-4">
+            <div className="text-xs uppercase tracking-[0.24em] text-muted">Avg Surplus</div>
+            <div className={`mt-3 font-num text-2xl font-bold ${avgSurplus >= 0 ? 'text-teal' : 'text-down'}`}>{formatCurrency(avgSurplus)}</div>
+            <div className="mt-2 text-xs text-secondary">3-month average</div>
+          </div>
+        </section>
+
+        <section className="grid gap-4 rounded-2xl border border-border bg-surface p-5 shadow-card md:grid-cols-3">
+          <div className="rounded-2xl border border-border bg-panel/60 p-4">
+            <div className="text-xs uppercase tracking-[0.24em] text-muted">This Month Income</div>
+            <div className="mt-3 font-num text-2xl font-bold text-up">{formatCurrency(income)}</div>
+            <div className="mt-2 text-xs text-secondary">Current month in progress</div>
+          </div>
+          <div className="rounded-2xl border border-border bg-panel/60 p-4">
+            <div className="text-xs uppercase tracking-[0.24em] text-muted">This Month Expenses</div>
+            <div className="mt-3 font-num text-2xl font-bold text-down">{formatCurrency(monthExpenses)}</div>
+            <div className="mt-2 text-xs text-secondary">Current month in progress</div>
+          </div>
+          <div className="rounded-2xl border border-border bg-panel/60 p-4">
+            <div className="text-xs uppercase tracking-[0.24em] text-muted">This Month Net</div>
+            <div className={`mt-3 font-num text-2xl font-bold ${cashFlow >= 0 ? 'text-teal' : 'text-down'}`}>{formatCurrency(cashFlow)}</div>
+            <div className="mt-2 text-xs text-secondary">April is {currentMonthDay} days into {currentMonthLength}</div>
+          </div>
+        </section>
+
+        <section className="grid gap-4 rounded-2xl border border-border bg-surface p-5 shadow-card md:grid-cols-3">
+          <div className="rounded-2xl border border-border bg-panel/60 p-4">
+            <div className="text-xs uppercase tracking-[0.24em] text-muted">Avg Monthly Income</div>
+            <div className="mt-3 font-num text-2xl font-bold text-up">{formatCurrency(lifetimeAvgMonthlyIncome)}</div>
+          </div>
+          <div className="rounded-2xl border border-border bg-panel/60 p-4">
+            <div className="text-xs uppercase tracking-[0.24em] text-muted">Avg Monthly Expenses</div>
+            <div className="mt-3 font-num text-2xl font-bold text-down">{formatCurrency(lifetimeAvgMonthlyExpenses)}</div>
+          </div>
+          <div className="rounded-2xl border border-border bg-panel/60 p-4">
+            <div className="text-xs uppercase tracking-[0.24em] text-muted">Data Coverage</div>
+            <div className="mt-3 text-sm font-semibold text-primary">{dataCoverage}</div>
+          </div>
+        </section>
+
+        {habitInsights.length ? (
+          <section className="rounded-2xl border border-warn/30 bg-surface p-5 shadow-card">
+            <div className="mb-3 flex items-center gap-2 text-xs uppercase tracking-[0.24em] text-warn">
+              <AlertTriangle size={14} />
+              Habit Alerts
+            </div>
+            <div className="space-y-2">
+              {habitInsights.map((insight) => (
+                <div key={insight} className="rounded-xl bg-warn-bg px-4 py-3 text-sm text-primary">
+                  {insight}
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
 
         <div className="grid gap-6 xl:grid-cols-[2fr,1fr]">
           <section className="rounded-2xl border border-border bg-surface p-5 shadow-card">
@@ -251,21 +333,6 @@ export default function DashboardContent({
           </div>
           <div className="h-1 w-full rounded-full bg-gradient-to-r from-transparent via-teal/30 to-transparent" />
           <p className="mt-4 text-sm leading-7 text-primary">{aiInsight || "Generating today's most important insight..."}</p>
-        </section>
-
-        <section className="grid gap-4 rounded-2xl border border-border bg-surface p-5 shadow-card md:grid-cols-3">
-          <div className="rounded-2xl border border-border bg-panel/60 p-4">
-            <div className="text-xs uppercase tracking-[0.24em] text-muted">Income</div>
-            <div className="mt-3 font-num text-2xl font-bold text-up">{formatCurrency(income)}</div>
-          </div>
-          <div className="rounded-2xl border border-border bg-panel/60 p-4">
-            <div className="text-xs uppercase tracking-[0.24em] text-muted">Expenses</div>
-            <div className="mt-3 font-num text-2xl font-bold text-down">{formatCurrency(monthExpenses)}</div>
-          </div>
-          <div className="rounded-2xl border border-border bg-panel/60 p-4">
-            <div className="text-xs uppercase tracking-[0.24em] text-muted">Net Cash Flow</div>
-            <div className={`mt-3 font-num text-2xl font-bold ${cashFlow >= 0 ? 'text-teal' : 'text-down'}`}>{formatCurrency(cashFlow)}</div>
-          </div>
         </section>
 
         <section className="rounded-2xl border border-border bg-surface p-5 shadow-card">

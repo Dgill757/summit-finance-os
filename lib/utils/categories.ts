@@ -20,6 +20,11 @@ export const CATEGORIES: Record<string, Category> = {
   Utilities: { id: 'utilities', label: 'Utilities', icon: '⚡', color: '#eab308', bgColor: 'rgba(234,179,8,0.12)' },
   Income: { id: 'income', label: 'Income', icon: '💰', color: '#22c55e', bgColor: 'rgba(34,197,94,0.12)' },
   Transfer: { id: 'transfer', label: 'Transfer', icon: '↔️', color: '#94a3b8', bgColor: 'rgba(148,163,184,0.12)' },
+  'Debt Payments': { id: 'debt', label: 'Debt Payments', icon: '💳', color: '#ef4444', bgColor: 'rgba(239,68,68,0.12)' },
+  'Business Services': { id: 'bizserv', label: 'Business Services', icon: '🏢', color: '#8b5cf6', bgColor: 'rgba(139,92,246,0.12)' },
+  'Bank Fees': { id: 'bankfees', label: 'Bank Fees', icon: '🏛️', color: '#94a3b8', bgColor: 'rgba(148,163,184,0.12)' },
+  'Alcohol & Bars': { id: 'alcohol', label: 'Alcohol & Bars', icon: '🍺', color: '#f97316', bgColor: 'rgba(249,115,22,0.12)' },
+  'Personal Care': { id: 'personal', label: 'Personal Care', icon: '💆', color: '#d946ef', bgColor: 'rgba(217,70,239,0.12)' },
   Other: { id: 'other', label: 'Other', icon: '📋', color: '#6b7280', bgColor: 'rgba(107,114,128,0.12)' },
 }
 
@@ -31,17 +36,18 @@ export const CATEGORY_LIST = Object.values(CATEGORIES)
 
 export function mapPlaidCategory(cats: string[] | null): string {
   if (!cats?.length) return 'Other'
-  const p = cats[0]?.toLowerCase() || ''
-  const d = cats[1]?.toLowerCase() || ''
-  if (d.includes('restaurant') || d.includes('fast food') || d.includes('coffee')) return 'Food & Dining'
-  if (d.includes('groceries') || d.includes('supermarkets')) return 'Groceries'
-  if (p.includes('travel') || d.includes('gas station') || d.includes('taxi') || d.includes('uber')) return 'Transportation'
-  if (p.includes('shops') || d.includes('clothing') || d.includes('electronics')) return 'Shopping'
-  if (p.includes('recreation') || d.includes('streaming') || d.includes('entertainment')) return 'Entertainment'
-  if (d.includes('subscription') || d.includes('software')) return 'Subscriptions'
-  if (p.includes('healthcare') || p.includes('medical')) return 'Health'
-  if (d.includes('utilities')) return 'Utilities'
-  if (p.includes('transfer') && (d.includes('payroll') || d.includes('deposit'))) return 'Income'
-  if (p.includes('transfer')) return 'Transfer'
+  const primary = cats[0]?.toLowerCase() || ''
+  const detailed = cats[1]?.toLowerCase() || ''
+
+  if (detailed.includes('restaurant') || detailed.includes('fast food') || detailed.includes('coffee')) return 'Food & Dining'
+  if (detailed.includes('groceries') || detailed.includes('supermarkets')) return 'Groceries'
+  if (primary.includes('travel') || detailed.includes('gas station') || detailed.includes('taxi') || detailed.includes('uber')) return 'Transportation'
+  if (primary.includes('shops') || detailed.includes('clothing') || detailed.includes('electronics')) return 'Shopping'
+  if (primary.includes('recreation') || detailed.includes('streaming') || detailed.includes('entertainment')) return 'Entertainment'
+  if (detailed.includes('subscription') || detailed.includes('software')) return 'Subscriptions'
+  if (primary.includes('healthcare') || primary.includes('medical')) return 'Health'
+  if (detailed.includes('utilities')) return 'Utilities'
+  if (primary.includes('transfer') && (detailed.includes('payroll') || detailed.includes('deposit'))) return 'Income'
+  if (primary.includes('transfer')) return 'Transfer'
   return 'Other'
 }
