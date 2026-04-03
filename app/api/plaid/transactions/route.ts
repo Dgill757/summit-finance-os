@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { plaidClient } from '@/lib/plaid/client'
 import { mapPlaidCategory } from '@/lib/utils/categories'
+import { cleanMerchantName, detectCategoryFromDescription } from '@/lib/utils/merchant-cleaner'
 
 export async function POST() {
   try {
@@ -45,30 +46,47 @@ export async function POST() {
       if (toAdd.length) {
         const inserts = toAdd
           .filter((tx) => accountMap[tx.account_id])
-          .map((tx) => ({
-            user_id: user.id,
-            account_id: accountMap[tx.account_id],
-            plaid_transaction_id: tx.transaction_id,
-            amount: tx.amount,
-            name: tx.merchant_name || tx.name,
-            merchant_name: tx.merchant_name ?? null,
-            category: resolveCategory(tx.merchant_name || tx.name, mapPlaidCategory(tx.personal_finance_category?.primary ? [tx.personal_finance_category.primary, tx.personal_finance_category.detailed] : tx.category)),
-            plaid_category: tx.category ?? null,
-            date: tx.date,
-            pending: tx.pending,
-            logo_url: tx.logo_url ?? null,
-            is_recurring: false,
-            is_business: false,
-          }))
+          .map((tx) => {
+            const rawName = tx.merchant_name || tx.name || 'Unknown'
+            const cleanedName = cleanMerchantName(rawName)
+            const detectedCategory = detectCategoryFromDescription(rawName)
+            const fallbackCategory = mapPlaidCategory(
+              tx.personal_finance_category?.primary ? [tx.personal_finance_category.primary, tx.personal_finance_category.detailed] : tx.category,
+            )
+
+            return {
+              user_id: user.id,
+              account_id: accountMap[tx.account_id],
+              plaid_transaction_id: tx.transaction_id,
+              amount: tx.amount,
+              name: cleanedName,
+              merchant_name: cleanedName,
+              category: resolveCategory(rawName, detectedCategory !== 'Other' ? detectedCategory : fallbackCategory),
+              plaid_category: tx.category ?? null,
+              date: tx.date,
+              pending: tx.pending,
+              logo_url: tx.logo_url ?? null,
+              is_recurring: false,
+              is_business: false,
+            }
+          })
         await supabase.from('transactions').upsert(inserts, { onConflict: 'plaid_transaction_id' })
         totalSynced += inserts.length
       }
 
       for (const tx of toModify) {
-        const merchantName = tx.merchant_name || tx.name
+        const merchantName = tx.merchant_name || tx.name || 'Unknown'
+        const cleanedName = cleanMerchantName(merchantName)
+        const detectedCategory = detectCategoryFromDescription(merchantName)
         await supabase
           .from('transactions')
-          .update({ amount: tx.amount, name: merchantName, pending: tx.pending, category: resolveCategory(merchantName, mapPlaidCategory(tx.category)) })
+          .update({
+            amount: tx.amount,
+            name: cleanedName,
+            merchant_name: cleanedName,
+            pending: tx.pending,
+            category: resolveCategory(merchantName, detectedCategory !== 'Other' ? detectedCategory : mapPlaidCategory(tx.category)),
+          })
           .eq('plaid_transaction_id', tx.transaction_id)
       }
       if (toRemove.length) await supabase.from('transactions').delete().in('plaid_transaction_id', toRemove)

@@ -19,11 +19,18 @@ export default async function SubscriptionsPage() {
   const subscriptions = detectSubscriptions((transactions || []) as any)
   const totalMonthly = subscriptions.reduce((sum, sub) => sum + sub.monthly_amount, 0)
   const totalAnnual = subscriptions.reduce((sum, sub) => sum + sub.annual_amount, 0)
+  const needsMoreData = (transactions || []).length < 60
 
   return (
     <div className="flex min-h-full flex-col">
       <TopBar title="Subscriptions" subtitle="Recurring charges detected from your transactions" />
-      <SubscriptionsContent subscriptions={subscriptions} totalMonthly={totalMonthly} totalAnnual={totalAnnual} />
+      <SubscriptionsContent
+        subscriptions={subscriptions}
+        totalMonthly={totalMonthly}
+        totalAnnual={totalAnnual}
+        needsMoreData={needsMoreData}
+        transactionCount={(transactions || []).length}
+      />
     </div>
   )
 }

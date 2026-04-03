@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { endOfMonth, format, startOfMonth } from 'date-fns'
+import { endOfMonth, format, startOfMonth, subMonths } from 'date-fns'
 import { createClient } from '@/lib/supabase/server'
 import { openai, AI_SYSTEM_PROMPT, AI_FUNCTIONS } from '@/lib/openai/client'
 
@@ -65,6 +65,43 @@ export async function POST(request: Request) {
     } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     const { messages, financialContext } = await request.json()
+    const { data: recentTx } = await supabase
+      .from('transactions')
+      .select('amount, category, name, date')
+      .eq('user_id', user.id)
+      .gte('date', format(subMonths(new Date(), 2), 'yyyy-MM-dd'))
+      .order('date', { ascending: false })
+      .limit(200)
+
+    const catTotals: Record<string, number> = {}
+    const merchantTotals: Record<string, number> = {}
+    const merchantMonths: Record<string, Set<string>> = {}
+    for (const tx of recentTx || []) {
+      if (tx.amount > 0) {
+        const category = tx.category || 'Other'
+        const name = tx.name || 'Unknown'
+        catTotals[category] = (catTotals[category] || 0) + Number(tx.amount)
+        merchantTotals[name] = (merchantTotals[name] || 0) + Number(tx.amount)
+        const month = tx.date.substring(0, 7)
+        merchantMonths[name] ??= new Set()
+        merchantMonths[name].add(month)
+      }
+    }
+
+    const topCategories = Object.entries(catTotals)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 8)
+      .map(([cat, amt]) => `${cat}: $${amt.toFixed(2)}`)
+
+    const topMerchants = Object.entries(merchantTotals)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 10)
+      .map(([name, amt]) => `${name}: $${amt.toFixed(2)}`)
+
+    const likelySubscriptions = Object.entries(merchantMonths)
+      .filter(([, months]) => months.size >= 2)
+      .map(([name]) => `${name}: $${((merchantTotals[name] || 0) / 2).toFixed(2)}/mo`)
+
     const contextPrompt = financialContext
       ? `
 CURRENT FINANCIAL SNAPSHOT FOR DAN GILL:
@@ -80,9 +117,18 @@ ${financialContext.goals?.map((g: any) => `  • ${g.name}: $${g.current_amount}
 Use this data when answering questions. Always be specific with dollar amounts.
 `
       : ''
+    const enhancedContext = `
+${contextPrompt}
+
+SPENDING ANALYSIS (last 2 months):
+Top Categories: ${topCategories.join(', ') || 'None yet'}
+Top Merchants: ${topMerchants.join(', ') || 'None yet'}
+Likely Subscriptions: ${likelySubscriptions.join(', ') || 'None yet'}
+Total Transactions Analyzed: ${recentTx?.length || 0}
+`
     const response = await openai.chat.completions.create({
       model: 'gpt-4o',
-      messages: [{ role: 'system', content: `${AI_SYSTEM_PROMPT}\n${contextPrompt}` }, ...messages],
+      messages: [{ role: 'system', content: `${AI_SYSTEM_PROMPT}\n${enhancedContext}` }, ...messages],
       tools: AI_FUNCTIONS.map((f) => ({ type: 'function' as const, function: f })),
       tool_choice: 'auto',
     })
@@ -92,7 +138,7 @@ Use this data when answering questions. Always be specific with dollar amounts.
       const toolResults = await Promise.all(functionCalls.map(async (tc) => ({ tool_call_id: tc.id, role: 'tool' as const, content: JSON.stringify(await executeFunctionCall(tc.function.name, JSON.parse(tc.function.arguments), supabase, user.id)) })))
       const final = await openai.chat.completions.create({
         model: 'gpt-4o',
-        messages: [{ role: 'system', content: `${AI_SYSTEM_PROMPT}\n${contextPrompt}` }, ...messages, msg, ...toolResults],
+        messages: [{ role: 'system', content: `${AI_SYSTEM_PROMPT}\n${enhancedContext}` }, ...messages, msg, ...toolResults],
       })
       return NextResponse.json({ message: final.choices[0].message.content })
     }

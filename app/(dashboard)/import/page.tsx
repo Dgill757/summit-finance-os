@@ -17,7 +17,7 @@ export default async function ImportPage() {
   return (
     <div className="flex flex-col min-h-full">
       <TopBar title="Import Transactions" subtitle="Upload a bank statement CSV" />
-      <ImportContent accounts={accounts || []} userId={user.id} />
+      <ImportContent accounts={accounts || []} />
     </div>
   )
 }
