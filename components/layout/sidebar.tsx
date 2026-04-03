@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
-import { BarChart3, BookOpen, Bot, Building2, ChevronRight, CreditCard, FileText, LayoutDashboard, LogOut, PieChart, Plus, Rocket, Settings, Target, TrendingUp, Users, Zap } from 'lucide-react'
+import { BarChart3, BookOpen, Bot, Building2, ChevronRight, CreditCard, FileText, LayoutDashboard, LogOut, PieChart, Plus, Rocket, Settings, Target, TrendingUp, Upload, Users, Zap } from 'lucide-react'
 import * as Tooltip from '@radix-ui/react-tooltip'
 import { createClient } from '@/lib/supabase/client'
 import { cn } from '@/lib/utils/cn'
@@ -24,6 +24,7 @@ const NAV_SECTIONS = [
       { href: '/transactions', label: 'Transactions', icon: CreditCard },
       { href: '/budgets', label: 'Budgets', icon: PieChart },
       { href: '/subscriptions', label: 'Subscriptions', icon: Zap },
+      { href: '/import', label: 'Import CSV', icon: Upload },
     ],
   },
   {
