@@ -41,7 +41,6 @@ async function executeFunctionCall(name: string, args: Record<string, any>, supa
     const liabilities = (accounts || [])
       .filter((account) => account.type === 'credit' || account.type === 'loan')
       .reduce((sum, account) => sum + Math.abs(Number(account.current_balance || 0)), 0)
-
     return { net_worth: assets - liabilities, total_assets: assets, total_liabilities: liabilities }
   }
 
@@ -59,14 +58,29 @@ async function executeFunctionCall(name: string, args: Record<string, any>, supa
   }
 
   if (name === 'search_transactions') {
-    let query = supabase.from('transactions').select('*').eq('user_id', userId).order('date', { ascending: false }).limit(50)
+    let query = supabase
+      .from('transactions')
+      .select('id, name, merchant_name, amount, date, category, account_id')
+      .eq('user_id', userId)
+      .order('date', { ascending: false })
+      .limit(100)
+
     if (args.start_date) query = query.gte('date', args.start_date)
     if (args.end_date) query = query.lte('date', args.end_date)
     if (typeof args.min_amount === 'number') query = query.gte('amount', args.min_amount)
     if (typeof args.max_amount === 'number') query = query.lte('amount', args.max_amount)
     if (args.query) query = query.or(`name.ilike.%${args.query}%,merchant_name.ilike.%${args.query}%`)
+
     const { data } = await query
-    return { transactions: data || [], count: (data || []).length }
+    const total = (data || []).reduce((sum, transaction) => sum + Math.abs(Number(transaction.amount)), 0)
+    return {
+      transactions: data || [],
+      count: (data || []).length,
+      total_amount: total,
+      message: data?.length
+        ? `Found ${data.length} transactions matching "${args.query}" totaling $${total.toFixed(2)}`
+        : `No transactions found matching "${args.query}"`,
+    }
   }
 
   if (name === 'get_budget_vs_actual') {
@@ -308,21 +322,21 @@ export async function POST(request: Request) {
       .order('date', { ascending: false })
       .limit(200)
 
-    const catTotals: Record<string, number> = {}
+    const categoryTotals: Record<string, number> = {}
     const merchantTotals: Record<string, number> = {}
     const merchantMonths: Record<string, Set<string>> = {}
     for (const tx of recentTx || []) {
       if (Number(tx.amount) > 0) {
         const category = tx.category || 'Other'
         const merchant = tx.name || 'Unknown'
-        catTotals[category] = (catTotals[category] || 0) + Number(tx.amount)
+        categoryTotals[category] = (categoryTotals[category] || 0) + Number(tx.amount)
         merchantTotals[merchant] = (merchantTotals[merchant] || 0) + Number(tx.amount)
         merchantMonths[merchant] ??= new Set()
         merchantMonths[merchant].add(tx.date.substring(0, 7))
       }
     }
 
-    const topCategories = Object.entries(catTotals)
+    const topCategories = Object.entries(categoryTotals)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 8)
       .map(([category, amount]) => `${category}: $${amount.toFixed(2)}`)
@@ -336,19 +350,41 @@ export async function POST(request: Request) {
 
     const contextPrompt = financialContext
       ? `
-CURRENT FINANCIAL SNAPSHOT FOR DAN GILL:
-- Net Worth: $${Number(financialContext.net_worth || 0).toFixed(2)}
+=== DAN GILL — COMPLETE FINANCIAL SNAPSHOT ===
+
+DATA COVERAGE: ${financialContext.transaction_count || 0} transactions analyzed
+DATE RANGE: ${financialContext.data_from || 'unknown'} to ${financialContext.data_to || 'unknown'}
+
+MONTHLY AVERAGES (last 3 months):
+- Average Monthly Income: $${Number(financialContext.avg_monthly_income || 0).toFixed(2)}
+- Average Monthly Spending: $${Number(financialContext.avg_monthly_expenses || 0).toFixed(2)}
+- Average Savings Rate: ${financialContext.savings_rate || 0}%
+
+THIS MONTH:
+- Income: $${Number(financialContext.month_income || 0).toFixed(2)}
+- Expenses: $${Number(financialContext.month_expenses || 0).toFixed(2)}
+
+NET WORTH (from bank accounts):
 - Total Assets: $${Number(financialContext.total_assets || 0).toFixed(2)}
 - Total Liabilities: $${Number(financialContext.total_liabilities || 0).toFixed(2)}
-- This Month Income: $${Number(financialContext.month_income || 0).toFixed(2)}
-- This Month Expenses: $${Number(financialContext.month_expenses || 0).toFixed(2)}
-- Savings Rate: ${Number(financialContext.savings_rate || 0)}%
-- Active Goals: ${Number(financialContext.active_goals || 0)}
-${(financialContext.goals || []).map((goal: Record<string, any>) => `  • ${goal.name}: $${goal.current_amount} of $${goal.target_amount} (${goal.type})`).join('\n')}
+- Net Worth: $${Number(financialContext.net_worth || 0).toFixed(2)}
+Note: Net worth may be understated if using CSV import (account balances not synced)
 
-Use this data when answering questions. Always be specific with dollar amounts.
+TOP SPENDING CATEGORIES (last 3 months):
+${(financialContext.top_categories || []).map((category: Record<string, any>) => `- ${category.category}: $${Number(category.amount).toFixed(2)}`).join('\n')}
+
+DETECTED SUBSCRIPTIONS/RECURRING ($${Number(financialContext.total_subscriptions_monthly || 0).toFixed(2)}/month total):
+${(financialContext.subscriptions || []).slice(0, 15).map((subscription: Record<string, any>) => `- ${subscription.name}: ~$${Number(subscription.monthly_avg).toFixed(2)}/mo (seen ${subscription.months_seen} months)`).join('\n')}
+
+ACTIVE GOALS (${financialContext.active_goals || 0}):
+${(financialContext.goals || []).map((goal: Record<string, any>) => `- ${goal.name}: $${goal.current_amount} of $${goal.target_amount} (${Math.round((Number(goal.current_amount) / Math.max(Number(goal.target_amount), 1)) * 100)}%) — ${goal.type}`).join('\n')}
+
+=== END SNAPSHOT ===
+
+IMPORTANT: This data is real. When asked specific questions about merchants, amounts,
+or categories, USE FUNCTION CALLS to get exact data from the database.
 `
-      : ''
+      : 'No financial context provided — call functions to get data.'
 
     const enhancedContext = `
 ${contextPrompt}

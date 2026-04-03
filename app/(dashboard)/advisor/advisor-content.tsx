@@ -116,20 +116,42 @@ function actionSummary(action: ChatAction) {
   return null
 }
 
-export function AdvisorContent({ financialContext, userId }: { financialContext: Record<string, unknown>; userId: string }) {
+export function AdvisorContent({ financialContext, userId }: { financialContext: Record<string, any>; userId: string }) {
   const storageKey = `summit-advisor-${userId}`
-  const openingMessage = useMemo(() => {
-    const netWorth = Number(financialContext.net_worth || 0)
-    const expenses = Number(financialContext.month_expenses || 0)
+  const insight = useMemo(() => {
+    const txCount = Number(financialContext.transaction_count || 0)
+    const avgIncome = Number(financialContext.avg_monthly_income || 0)
+    const avgSpend = Number(financialContext.avg_monthly_expenses || 0)
     const savingsRate = Number(financialContext.savings_rate || 0)
-    const insight =
-      savingsRate < 10
-        ? 'Your savings rate is tight. Your fastest win is reducing recurring monthly drag.'
-        : 'You have room to move. The best next step is directing surplus cash into a priority goal.'
-    return `Hey Dan! I've reviewed your finances. Your net worth is $${netWorth.toLocaleString()}, you've spent $${expenses.toLocaleString()} this month with a ${savingsRate}% savings rate. ${insight} What do you want to dig into?`
+    const topCat = financialContext.top_categories?.[0]
+    const subTotal = Number(financialContext.total_subscriptions_monthly || 0)
+    const goals = financialContext.goals || []
+    const dataFrom = financialContext.data_from || ''
+    const dataTo = financialContext.data_to || ''
+
+    if (txCount === 0) {
+      return `Hey Dan! I don't see any transactions yet. Import your bank statement CSV using the Import CSV link in the sidebar, then come back and I'll have a full analysis ready for you.`
+    }
+
+    const incomeStr = avgIncome > 0 ? `$${avgIncome.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}` : 'unknown'
+    const spendStr = avgSpend > 0 ? `$${avgSpend.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}` : 'unknown'
+    const subStr = subTotal > 0 ? `$${subTotal.toFixed(0)}` : 'unknown'
+    const topCatStr = topCat ? `${topCat.category} at $${Number(topCat.amount).toFixed(0)}/mo` : 'unknown'
+    const dateRange = dataFrom ? `from ${dataFrom.substring(0, 7)} to ${dataTo.substring(0, 7)}` : ''
+
+    const savingsComment =
+      savingsRate < 0
+        ? `You're spending more than you earn — this needs immediate attention.`
+        : savingsRate < 10
+          ? `Your savings rate is ${savingsRate}% — below the recommended 20%. There's real room to improve.`
+          : savingsRate < 20
+            ? `Your savings rate is ${savingsRate}% — decent, but let's push it higher.`
+            : `Your savings rate is ${savingsRate}% — solid. Let's optimize further.`
+
+    return `Hey Dan! I've analyzed your ${txCount.toLocaleString()} transactions ${dateRange}. Here's what I see: average monthly income ${incomeStr}, average monthly spending ${spendStr}, subscriptions costing ${subStr}/month, and your top spending category is ${topCatStr}. ${savingsComment} You have ${goals.length} active goal${goals.length !== 1 ? 's' : ''}. What do you want to dig into?`
   }, [financialContext])
 
-  const [messages, setMessages] = useState<ChatMessage[]>([{ role: 'assistant', content: openingMessage }])
+  const [messages, setMessages] = useState<ChatMessage[]>([{ role: 'assistant', content: insight }])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -180,7 +202,7 @@ export function AdvisorContent({ financialContext, userId }: { financialContext:
   return (
     <div className="flex min-h-0 flex-1 flex-col p-6">
       <div className="mb-4 overflow-x-auto pb-1">
-        <div className="flex min-w-max gap-2">
+        <div className="flex min-w-max items-center gap-2">
           {ACTION_PROMPTS.map((item) => (
             <button
               key={item.label}
@@ -190,6 +212,15 @@ export function AdvisorContent({ financialContext, userId }: { financialContext:
               {item.label}
             </button>
           ))}
+          <button
+            onClick={() => {
+              localStorage.removeItem(storageKey)
+              window.location.reload()
+            }}
+            className="ml-auto rounded px-2 py-1 text-xs text-muted transition-colors hover:text-secondary"
+          >
+            ↺ Reset chat
+          </button>
         </div>
       </div>
 
